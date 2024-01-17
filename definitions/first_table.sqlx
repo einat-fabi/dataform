@@ -9,11 +9,18 @@
 
 -- }
 
+-- config {
+--   type: "table",
+--   bigquery: {
+--     partitionBy: "appID",
+--     clusterBy: ["appID"]  
+--   }
+-- }
+
 
 config {
   type: "table",
   bigquery: {
-    partitionBy: "appID",
     clusterBy: ["appID"]  
   }
 }
