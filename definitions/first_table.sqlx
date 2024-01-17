@@ -8,22 +8,24 @@
 --   type: "table", // Creates a view in BigQuery. Try changing to "table" instead.
 
 -- }
+
+config {
+  type: "table",
+  bigquery: {
+    partitionBy: "app_id",
+    clusterBy: ["app_id", "app_status"]
+  }
+}
+
 config {
   type: "declaration",
   database: "data-processing-272107",
   schema: "dwh",
-  name: "dim_apps",
+  name: "dim_apps"
 }
 
-config {
-  type: "declaration",
-  database: "data-processing-272107",
-  schema: "mrr",
-  name: "app_installmac",
-}
+
 -- The rest of a SQLX file contains your SELECT statement used to create the table.
 
-select a.*,b.appName
-from ${ref("dim_apps")} a
-left join ${ref("app_installmac")} b
-on a.app_id = b.appID
+select *
+from ${ref("dim_apps")} 
