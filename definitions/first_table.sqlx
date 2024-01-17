@@ -9,23 +9,16 @@
 
 -- }
 
+
 config {
   type: "table",
   bigquery: {
-    partitionBy: "app_id",
-    clusterBy: ["app_id", "app_status"]
+    partitionBy: "appID",
+    clusterBy: ["appID"]  
   }
 }
-
-config {
-  type: "declaration",
-  database: "data-processing-272107",
-  schema: "dwh",
-  name: "dim_apps"
-}
-
 
 -- The rest of a SQLX file contains your SELECT statement used to create the table.
 
 select *
-from ${ref("dim_apps")} 
+from ${ref("app_installmac")} 
