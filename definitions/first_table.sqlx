@@ -4,20 +4,26 @@
 -- You can delete this file, then commit and push your changes to your repository when you are ready.
 
 -- Config blocks allow you to configure, document, and test your data assets.
-config {
-  type: "table", // Creates a view in BigQuery. Try changing to "table" instead.
+-- config {
+--   type: "table", // Creates a view in BigQuery. Try changing to "table" instead.
 
+-- }
+config {
+  type: "declaration",
+  database: "data-processing-272107",
+  schema: "dwh",
+  name: "dim_apps",
 }
 
+config {
+  type: "declaration",
+  database: "data-processing-272107",
+  schema: "mrr",
+  name: "app_installmac",
+}
 -- The rest of a SQLX file contains your SELECT statement used to create the table.
 
-select 
-    app_id,
-    app_name,
-    app_status,
-    is_B2B,
-    is_live,
-    partner,
-    provider,
-    platform
-from ${ref("data-processing-272107.dwh.dim_apps")}
+select a.*,b.appName
+from ${ref("dim_apps")} a
+left join ${ref("app_installmac")} b
+on a.app_id = b.appID
