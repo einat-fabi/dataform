@@ -1,0 +1,10 @@
+config {
+    type: "assertion"
+}
+
+SELECT
+  *
+FROM
+  ${ref("first_table")}
+WHERE
+  appID IS null

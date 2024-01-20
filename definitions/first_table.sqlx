@@ -1,31 +1,39 @@
--- This is an example SQLX file to help you learn the basics of Dataform.
--- Visit https://cloud.google.com/dataform/docs/sql-workflows for more information on how to configure your SQL workflow.
-
--- You can delete this file, then commit and push your changes to your repository when you are ready.
-
--- Config blocks allow you to configure, document, and test your data assets.
--- config {
---   type: "table", // Creates a view in BigQuery. Try changing to "table" instead.
-
--- }
-
--- config {
---   type: "table",
---   bigquery: {
---     partitionBy: "appID",
---     clusterBy: ["appID"]  
---   }
--- }
-
-
 config {
-  type: "table",
-  bigquery: {
-    clusterBy: ["appID"]  
-  }
+    type: "table",
+    bigquery: {
+        clusterBy: ["appID"]
+    },
+    assertions: {
+        uniqueKey: ["appID"],
+        nonNull: ["appID"]
+    }
 }
 
--- The rest of a SQLX file contains your SELECT statement used to create the table.
-
-select *
-from ${ref("app_installmac")} 
+  -- config {
+  --   type: "table",
+  --   bigquery: {
+  --     partitionBy: "appID",
+  --     clusterBy: ["appID"]
+  --   }
+  -- }
+  -- The rest of a SQLX file contains your SELECT statement used to create the table.
+SELECT
+  *EXCEPT(timestamp)
+FROM
+  ${ref("app_installmac")}
+UNION ALL
+SELECT
+  '1686575908061665' appID,
+  '' appName,
+  '' SpType,
+  '' signature,
+  '' platform,
+  '' identity
+UNION ALL
+SELECT
+  NULL appID,
+  '' appName,
+  '' SpType,
+  '' signature,
+  '' platform,
+  '' identity
