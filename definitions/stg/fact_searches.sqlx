@@ -1,6 +1,7 @@
 config {
     type: "table",
-    bigquery: {
+    name: "fact_searches",
+     bigquery: {
         partitionBy: "date",
         clusterBy: ["date, partner, app_id"]
     },
@@ -9,43 +10,6 @@ config {
     }
 }
 
-CREATE OR REPLACE PROCEDURE `data-processing-272107.stg_dev.sp_fact_all_searches_user_id`()
-BEGIN
-
-DECLARE run_start TIMESTAMP;
-DECLARE dataset_name STRING(32);
-DECLARE table_name STRING(64);
-DECLARE table_max_date TIMESTAMP;
-DECLARE table_rows INT64;
-DECLARE min_dt DATE;
-
-
-CREATE TABLE IF NOT EXISTS `data-processing-272107.stg_dev.fact_all_searches_user_id` (
-     date DATE,
-     country_code STRING(4),
-     browser STRING(32),
-     browser_version STRING(128),
-     app_id STRING(64),
-     channel_url STRING(16),
-     is_hp BOOLEAN,
-     sp_type STRING(32),
-     searches INT64,
-     partner STRING(32),
-     tbl_source STRING(4),
-     channel_id STRING(16),
-     user_id STRING(1024),
-     install_date DATE,
-     feed STRING(32)
-)
-PARTITION BY date
-CLUSTER BY date, country_code, app_id;
-
-SET min_dt = (SELECT IFNULL(DATE_ADD(MAX(date), INTERVAL 1 DAY),'2023-08-01') FROM `data-processing-272107.stg_dev.fact_all_searches_user_id`);
-
--- SET min_dt =  DATE_SUB(CURRENT_DATE(),INTERVAL 30 DAY);
-
-INSERT INTO `data-processing-272107.stg_dev.fact_all_searches_user_id`
- 
  SELECT 
      date,
      country_code,
@@ -66,20 +30,19 @@ INSERT INTO `data-processing-272107.stg_dev.fact_all_searches_user_id`
   SELECT
   DATE(DATE_TRUNC(timestamp, DAY)) as date,
   country as country_code,
-  addBrowserName(browser) as browser,
+  ${browser_name_arrange.addBrowserName("browser")} as browser,
   browser_version,
   REPLACE(apl_id,' ','') as app_id,
   case when 
-    (CASE WHEN INSTR(STReplace(srch_ngn_url), '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(STReplace(srch_ngn_url), INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3, (INSTR(STReplace(srch_ngn_url), '&q=', 1, 1)-(INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3))) END) like '%�%'
-  then left(CASE WHEN INSTR(STReplace(srch_ngn_url), '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(STReplace(srch_ngn_url), INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3, (INSTR(STReplace(srch_ngn_url), '&q=', 1, 1)-(INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3))) END,8)
-  else CASE WHEN INSTR(STReplace(srch_ngn_url), '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(STReplace(srch_ngn_url), INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3, (INSTR(STReplace(srch_ngn_url), '&q=', 1, 1)-(INSTR(STReplace(srch_ngn_url), '&n=', 1, 1)+3))) END
+    (CASE WHEN INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
+    ELSE SUBSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END) like '%�%'
+  then left(CASE WHEN INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
+    ELSE SUBSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END,8)
+  else CASE WHEN INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
+    ELSE SUBSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${extract_channel_url.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END
   end as channel_url,
   is_hpok as is_hp,
   srch_ngn as sp_type,
---   COUNT(*) searches,
   case when lower(company_name) like 'yahoo%' then 'Yahoo'
        when lower(company_name) like 'firstofferz' or lower(srch_ngn) like '%foz%' then 'FirstOfferz'
        when lower(company_name) like 'aka' then 'Aka'
@@ -93,11 +56,11 @@ INSERT INTO `data-processing-272107.stg_dev.fact_all_searches_user_id`
   CASE WHEN (LENGTH(CAST(month_instok AS STRING)) = 8) THEN SAFE.PARSE_DATE('%Y%m%d', CAST(month_instok AS STRING)) 
        ELSE MIN(date(timestamp)) over(partition by suid) END  as install_date,
   CASE WHEN lower(company_name) = 'skenzo' THEN SUBSTR(srch_ngn_url, INSTR(srch_ngn_url, 'https://', 1, 1)+8, (INSTR(srch_ngn_url, '.com', 1, 1)-(INSTR(srch_ngn_url, 'https://', 1, 1)+8)))
-       WHEN INSTR(FeedReplace(srch_ngn_url), 'gd=', 1, 1) = 0 THEN ''
-       ELSE SUBSTR(FeedReplace(srch_ngn_url), INSTR(FeedReplace(srch_ngn_url), 'gd=', 1, 1)+3, 9) END as feed
+       WHEN INSTR(${extract_feed.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1) = 0 THEN ''
+       ELSE SUBSTR(${extract_feed.FeedReplace("srch_ngn_url")}, INSTR(${extract_feed.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1)+3, 9) END as feed
   FROM ${ref("search_log")}
   WHERE
-  (DATE(_PARTITIONTIME) >= min_dt AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+  (DATE(_PARTITIONTIME) >= '2023-08-01' AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
   AND DATE_TRUNC(timestamp, DAY) <= DATE_ADD(DATETIME_TRUNC(CURRENT_TIMESTAMP(),DAY), INTERVAL -1 DAY))
   AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
   AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
@@ -106,41 +69,4 @@ INSERT INTO `data-processing-272107.stg_dev.fact_all_searches_user_id`
   AND lower(country) <> 'il'
   AND apl_id <> '1619447267835692'
   )
-  GROUP BY 1,2,3,4,5,6,7,8,partner,11,12,13,14,15
-  UNION ALL
-  SELECT
-  DATE(DATE_TRUNC(reqTime, DAY)) as date,
-  countryCode as country_code,
-  browser,
-  browserVersion as browser_version,
-  REPLACE(CAST(appId AS STRING),' ','') as app_id,
-  -- '' as channel_id,
-  CASE WHEN INSTR(STReplace(searchUrl), '&n=', 1, 1) = 0 THEN ''
-  ELSE SUBSTR(STReplace(searchUrl), INSTR(STReplace(searchUrl), '&n=', 1, 1)+3, 4) END as channel_url,
-  isHp as is_hp,
-  spType as sp_type,
-  COUNT(*) searches,
-  case when lower(company_name) like 'yahoo%' then 'Yahoo'
-              when lower(company_name) like 'firstofferz' then 'FirstOfferz'
-              when lower(company_name) like 'aka' then 'Aka'
-              when lower(company_name) like 'rise' then 'IronSource'
-              when lower(company_name) like 'evernetix' then 'Evernetix'
-              else company_name end as partner,
-  'mac' as tbl_source,
-  '' as channel_id,
-  emid as user_id,
-  CAST('2000-01-01' AS DATE) install_date,
-  CASE WHEN lower(company_name) = 'skenzo' THEN SUBSTR(searchUrl, INSTR(searchUrl, 'https://', 1, 1)+8, (INSTR(searchUrl, '.com', 1, 1)-(INSTR(searchUrl, 'https://', 1, 1)+8)))
-       WHEN INSTR(FeedReplace(searchURL), 'gd=', 1, 1) = 0 THEN ''
-       ELSE SUBSTR(FeedReplace(searchURL), INSTR(FeedReplace(searchURL), 'gd=', 1, 1)+3, 9) END as feed
-  FROM ${ref("search_log_201408")}
-  WHERE
-  (DATE(_PARTITIONTIME) >= min_dt AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
-  --DATE(_PARTITIONTIME) >= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) 
-  AND DATE_TRUNC(reqTime, DAY) <= DATE_ADD(DATETIME_TRUNC(CURRENT_TIMESTAMP(),DAY), INTERVAL -1 DAY))
-  AND NOT(emid LIKE 'a27c0d5215d969059f43c0ca3e9a2a0a' AND (DATE(_PARTITIONTIME) BETWEEN '2022-07-22' and '2022-07-24') AND CAST(appId AS STRING) LIKE '1431513555588689')
-  AND REGEXP_CONTAINS(emid, r'[^\w .-]') = FALSE
-  AND RIGHT(emid,5) not like '%-%'
-  AND lower(countryCode) <> 'il'
-  and REPLACE(CAST(appId AS STRING),' ','') <> "1619447267835692"
-  GROUP BY 1,2,3,4,5,6,7,8,company_name,11,12,13,14,15
+  GROUP BY 1,2,3,4,5,6,7,8,10,11,12,13,14,15
