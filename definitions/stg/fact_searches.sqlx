@@ -1,12 +1,26 @@
 config {
     type: "table",
+    columns:{
+             date: "date of search",
+             country_code: "search location",
+             browser: "",
+             browser_version: "",
+             app_id: "",
+             channel_url: "channel sent in srch_url",
+             is_hp: "",
+             sp_type: "",
+             searches: "count of searches",
+             partner: "",
+             tbl_source: "pc or mac source table",
+             channel_id: "",
+             user_id: "",
+             install_date: "month instok",
+             feed: ""
+         },
     name: "fact_searches",
      bigquery: {
         partitionBy: "date",
         clusterBy: ["date, partner, app_id"]
-    },
-    assertions: {
-        nonNull: ["app_id","partner"]
     }
 }
 
@@ -60,7 +74,7 @@ config {
        ELSE SUBSTR(${extract_feed.FeedReplace("srch_ngn_url")}, INSTR(${extract_feed.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1)+3, 9) END as feed
   FROM ${ref("search_log")}
   WHERE
-  (DATE(_PARTITIONTIME) >= '2023-08-01' AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+  (DATE(_PARTITIONTIME) >= ${constants.min_dt} AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
   AND DATE_TRUNC(timestamp, DAY) <= DATE_ADD(DATETIME_TRUNC(CURRENT_TIMESTAMP(),DAY), INTERVAL -1 DAY))
   AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
   AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
