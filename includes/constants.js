@@ -1,2 +1,3 @@
  const min_dt = "'2023-12-01'";
- module.exports = { min_dt };
+// var min_dt = new Date("2023-12-01");
+module.exports = { min_dt };
