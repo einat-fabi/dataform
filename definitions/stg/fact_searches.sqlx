@@ -1,5 +1,11 @@
 config {
-    type: "table",
+    type: "incremental",
+    assertions: {
+    rowConditions: [
+      'searches > 0',
+      'length(app_id) = 16'
+    ]
+    },
     columns:{
              date: "date of search",
              country_code: "search location",
@@ -11,7 +17,7 @@ config {
              sp_type: "",
              searches: "count of searches",
              partner: "",
-             tbl_source: "pc or mac source table",
+             tbl_source: "pc/mac source table",
              channel_id: "",
              user_id: "",
              install_date: "month instok",
@@ -73,14 +79,16 @@ config {
        WHEN INSTR(${segment.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1) = 0 THEN ''
        ELSE SUBSTR(${segment.FeedReplace("srch_ngn_url")}, INSTR(${segment.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1)+3, 9) END as feed
   FROM ${ref("search_log")}
-  WHERE
-  (DATE(_PARTITIONTIME) >= ${constants.min_dt} AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
-  AND DATE_TRUNC(timestamp, DAY) <= DATE_ADD(DATETIME_TRUNC(CURRENT_TIMESTAMP(),DAY), INTERVAL -1 DAY))
-  AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
-  AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
-  AND suid not like "%�%" and suid not like "%ɚ%" and suid not like "%ə%" 
-  AND RIGHT(suid,5) not like '%-%'
-  AND lower(country) <> 'il'
-  AND apl_id <> '1619447267835692'
+  ${when(incremental(), `WHERE date(_partitiontime) > (SELECT MAX(date) FROM ${self()})`)}
+  -- AND DATE(_PARTITIONTIME) >= ${constants.min_dt}
+  -- AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
+  -- AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
+  -- AND suid not like "%�%" and suid not like "%ɚ%" and suid not like "%ə%" 
+  -- AND RIGHT(suid,5) not like '%-%'
+  -- AND lower(country) <> 'il'
+  -- AND apl_id <> '1619447267835692'
+--    AND DATE(_PARTITIONTIME) >= ${constants.min_dt} AND DATE(_PARTITIONTIME) <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+--    DATE_TRUNC(timestamp, DAY) <= DATE_ADD(DATETIME_TRUNC(CURRENT_TIMESTAMP(),DAY), INTERVAL -1 DAY)
+
   )
   GROUP BY 1,2,3,4,5,6,7,8,10,11,12,13,14,15
