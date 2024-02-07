@@ -1,7 +1,6 @@
 config {
     type: "table",
     
-   
     columns:{
              date: "date of search",
              country_code: "search location",
@@ -19,7 +18,7 @@ config {
              install_date: "month instok",
              feed: ""
          },
-    name: "fact_searches",
+    name: "fact_test",
       bigquery: {
         partitionBy: "date",
         clusterBy: ["date", "partner", "app_id"]    
@@ -35,13 +34,13 @@ pre_operations {
   )
 }
 
-DECLARE event_timestamp_checkpoint DEFAULT TIMESTAMP("2000-01-01 00:00:00 UTC");
+-- DECLARE event_timestamp_checkpoint DEFAULT TIMESTAMP("2000-01-01 00:00:00 UTC");
 
-SET event_timestamp_checkpoint = (
-${when(incremental(),
-`SELECT max(ingestionTime) FROM ${self()}`,
-`SELECT TIMESTAMP("2000-01-01 00:00:00 UTC")`)}
-);
+-- SET event_timestamp_checkpoint = (
+-- ${when(incremental(),
+-- `SELECT max(ingestionTime) FROM ${self()}`,
+-- `SELECT TIMESTAMP("2000-01-01 00:00:00 UTC")`)}
+-- );
 
  SELECT 
      date,
@@ -94,7 +93,7 @@ ${when(incremental(),
   FROM ${ref("search_log")} 
   WHERE date(_partitiontime) = event_timestamp
   
-   ${when(incremental(), `where date > (SELECT max(date) FROM ${self()})`)}
+  --  ${when(incremental(), `where date > (SELECT max(date) FROM ${self()})`)}
   AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
   AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
   AND suid not like "%�%" and suid not like "%ɚ%" and suid not like "%ə%" 
