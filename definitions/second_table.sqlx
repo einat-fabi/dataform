@@ -1,25 +1,16 @@
 config {
-    type: "table",
-    
-    columns:{
-     appID: "", 
-     appName: "",
-     SpType: "",
-     signature: "",
-     platform: "",
-     identity: "",
-     date: ""
-    },
-    
-    bigquery: {
-        clusterBy: ["appID"]
-    },
-    assertions: {
-        uniqueKey: ["appID"],
-        nonNull: ["appID"]
-    }
+    type: "incremental",
+    dependencies: ["first_table"]
 }
 
+pre_operations {
+  DECLARE event_timestamp DATE;
+  SET event_timestamp  =  (
+    ${when(incremental(),
+    `SELECT max(date) FROM data-processing-272107.dataform.first_table`,
+    `SELECT DATE("2023-08-01")`)}
+  )
+}
 
 SELECT
   *EXCEPT(timestamp),
