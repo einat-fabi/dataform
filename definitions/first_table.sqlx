@@ -1,5 +1,16 @@
 config {
     type: "table",
+    
+    columns:{
+     appID: "", 
+     appName: "",
+     SpType: "",
+     signature: "",
+     platform: "",
+     identity: "",
+     date: ""
+    },
+    
     bigquery: {
         clusterBy: ["appID"]
     },
@@ -9,18 +20,23 @@ config {
     }
 }
 
-  -- config {
-  --   type: "table",
-  --   bigquery: {
-  --     partitionBy: "appID",
-  --     clusterBy: ["appID"]
-  --   }
-  -- }
-  -- The rest of a SQLX file contains your SELECT statement used to create the table.
+pre_operations {
+  DECLARE event_timestamp DATE;
+  SET event_timestamp  =  (
+    ${when(incremental(),
+    `SELECT max(date) FROM ${self()}`,
+    `SELECT DATE("2023-08-01")`)}
+  )
+}
+
 SELECT
-  *EXCEPT(timestamp)
+  *EXCEPT(timestamp),
+  case when appID = '1686575908061665' then '2023-08-01'
+       when appID like '%5575' then '2023-01-01'
+       else '2021-01-01' end as date
 FROM
   ${ref("app_installmac")}
+
 UNION ALL
 SELECT
   '1686575908061665' appID,
@@ -28,7 +44,8 @@ SELECT
   '' SpType,
   '' signature,
   '' platform,
-  '' identity
+  '' identity,
+  '2000-01-01' date
 UNION ALL
 SELECT
   NULL appID,
@@ -36,4 +53,5 @@ SELECT
   '' SpType,
   '' signature,
   '' platform,
-  '' identity
+  '' identity,
+  '2000-01-01' date
