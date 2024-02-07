@@ -1,7 +1,7 @@
 config {
     type: "incremental",
     
-   
+  
     columns:{
              date: "date of search",
              country_code: "search location",
@@ -13,13 +13,13 @@ config {
              sp_type: "",
              searches: "count of searches",
              partner: "",
-             tbl_source: "pc/mac source table",
+             tbl_source: "pc/ mac source table",
              channel_id: "",
              user_id: "",
              install_date: "month instok",
              feed: ""
          },
-    name: "fact_searches",
+      name: "fact_searches",
       bigquery: {
         partitionBy: "date",
         clusterBy: ["date", "partner", "app_id"]    
