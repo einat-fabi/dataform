@@ -1,23 +1,40 @@
 config {
     type: "incremental",
-    uniqueKey: ["app_id"],
+    uniqueKey: ["appID"],
     schema: "stg",
     dependencies: ["first_table"],
     bigquery: {
-      partitionBy: "app_id"
+      partitionBy: "date",
+      clusterBy: ["appID"]
     }
 }
 
-
-
+pre_operations {
 CREATE TABLE IF NOT EXISTS stg.second_table AS
   SELECT *
   FROM ${ref("first_table")};
 
-CREATE OR REPLACE TABLE stg.second_table AS
+-- MERGE ${self()} as t USING ${ref("first_table")} as s
+-- ON t.app_id = s.app_id
+-- WHEN MATCHED THEN UPDATE 
+-- SET
+-- t.appName = s.appName
+--  , t.spType = s.spType
+--  , t.signature = s.signature
+--  , t.platform = s.platform
+--  , t.identity = s.identity
+--  , t.date = s.date
+-- WHEN NOT MATCHED THEN
+-- INSERT
+-- VALUES(s.appID, s.appName, s.sptype, s.signiture, s.platform, s.identity, s.date)
+}
+
+
+
+-- CREATE OR REPLACE TABLE stg.second_table AS
   SELECT *
   FROM ${ref("first_table")}
-  ${ when(incremental(), `WHERE date > (SELECT IFNULL(MAX(date),'2000-01-01') FROM ${self()})`)}
+  ${ when(incremental(), `WHERE date >= (SELECT IFNULL(MAX(date),'2000-01-01') FROM ${self()})`)}
 
 
 

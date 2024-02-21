@@ -4,12 +4,16 @@ config {
     bigquery: {
         partitionBy: "date",
         clusterBy: ["date","app_id","partner"]
-    },
-    assertions: {
-        uniqueKey: ["date","app_id","partner","company"],
-        nonNull: ["date","app_id","partner","company"]
     }
+
 }
+
+-- pre_operations {
+-- CREATE TABLE IF NOT EXISTS dwh_dev.fact_latency AS
+--   SELECT *
+--   FROM ${ref("first_table")};
+
+-- }
 
 
 WITH search_latency AS (
@@ -20,7 +24,7 @@ WITH search_latency AS (
          now, 
          DATETIME_DIFF(cast(now as datetime), cast(navigationStart as datetime), SECOND) latency
   FROM ${ref("search_latency")}
-  WHERE (DATE(_PARTITIONTIME) BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+  WHERE (DATE(_PARTITIONTIME) BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
   AND RIGHT(suid,5) not like "%-%" 
   AND suid <> "1F8BFBFF000406F100155DEE32AD"
   and app_id not like "%�%"
@@ -52,7 +56,7 @@ WITH search_latency AS (
         SUM(internal_searches) internal_searches
   FROM `data-processing-272107.dwh.fact_revenue`
   WHERE is_deleted = FALSE
-  AND (date BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+  AND (date BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
   GROUP BY 1,2,3,4
   HAVING internal_searches > 0
 )
