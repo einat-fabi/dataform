@@ -1,6 +1,6 @@
 config {
     type: "incremental",
-    uniqueKey: ["appID"],
+    uniqueKey: ["app_id"],
     schema: "stg",
     dependencies: ["first_table"],
     bigquery: {
