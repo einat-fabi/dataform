@@ -1,0 +1,106 @@
+config {
+    type: "table",
+    schema: "dwh_dev",
+    bigquery: {
+        partitionBy: "date",
+        clusterBy: ["date","app_id","partner"]
+    },
+    assertions: {
+        uniqueKey: ["date","app_id","partner","company"],
+        nonNull: ["appID"]
+    }
+}
+
+
+WITH search_latency AS (
+  SELECT date(timestamp) as date,
+         suid,
+         app_id,
+         navigationStart,
+         now, 
+         DATETIME_DIFF(cast(now as datetime), cast(navigationStart as datetime), SECOND) latency
+  FROM ${ref("search_latency")}
+  WHERE (DATE(_PARTITIONTIME) BETWEEN min_dt AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))-- > '2023-11-30'
+  AND RIGHT(suid,5) not like "%-%" 
+  AND suid <> "1F8BFBFF000406F100155DEE32AD"
+  and app_id not like "%�%"
+  and suid not like "%�%" and suid not like "%ɚ%" and suid not like "%ə%" 
+  and REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
+  and app_id <> "1619447267835692" 
+)
+
+, search_latency_agg AS (
+  SELECT 
+    date,
+    app_id,
+    latency,
+    percentile_cont(latency, 0.5) over(partition by date, app_id) median,
+    min(latency) over(partition by date, app_id) min_latency,
+    max(latency) over(partition by date, app_id) max_latency,
+    COUNT(*) searches
+  FROM search_latency
+  WHERE DATETIME_DIFF(now, navigationStart, day) < 1
+  GROUP BY 1,2,3
+)
+
+, partners as (
+  SELECT 
+        date,
+        app_id,
+        company,
+        partner,
+        SUM(internal_searches) internal_searches
+  FROM `data-processing-272107.dwh.fact_revenue`
+  WHERE is_deleted = FALSE
+  AND (date BETWEEN min_dt AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+  GROUP BY 1,2,3,4
+  HAVING internal_searches > 0
+)
+
+, joined_latency as (
+  SELECT
+    a.date,
+    a.app_id,
+    b.partner,
+    b.company,
+    a.latency,
+    a.median,
+    a.min_latency,
+    a.max_latency,
+    MAX(b.internal_searches) internal_searches,
+    SUM(a.searches) searches,
+  FROM search_latency_agg a
+  LEFT JOIN partners b
+  ON a.app_id = b.app_id
+  AND a.date = b.date
+  GROUP BY 1,2,3,4,5,6,7,8
+)
+
+
+, latency_calculation as (
+select *, 
+       sum(searches) over(partition by app_id,date) total_searches,
+       latency*searches as total_latency, 
+       sum(latency*searches) over(partition by app_id,date) w,
+       sum(latency*searches) over(partition by app_id,date)/ sum(searches) over(partition by app_id,date) avg_latency
+from joined_latency
+where (date between min_dt and current_date())
+order by 1 
+)
+
+
+SELECT 
+  date,
+  app_id,
+  ifnull(partner,'') partner,
+  ifnull(company,'') company,
+  median,
+  min_latency,
+  max_latency,
+  total_searches,
+  -- internal_searches,
+  ROUND(MAX(avg_latency),4) latency
+FROM latency_calculation
+WHERE internal_searches is not null
+GROUP BY 1,2,3,4,5,6,7,8 --,9
+ORDER BY 1,2

@@ -5,7 +5,6 @@ config {
     dependencies: ["first_table"],
     bigquery: {
       partitionBy: "appID",
-      updatePartitionFilter: "date >= date_sub(current_date(), interval 1 day)"
     }
 }
 

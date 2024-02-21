@@ -42,6 +42,12 @@ declare({
     name: "app_installmac"
 });
 
+
+declare({
+    database: "pc-windows-168009",
+    schema: "report",
+    name: "search_latency"
+});
 // declare({
 //     database: "pc-windows-168009",
 //     schema: "report",
