@@ -7,7 +7,7 @@ config {
     },
     assertions: {
         uniqueKey: ["date","app_id","partner","company"],
-        nonNull: ["appID"]
+        nonNull: ["date","app_id","partner","company"]
     }
 }
 
@@ -20,7 +20,7 @@ WITH search_latency AS (
          now, 
          DATETIME_DIFF(cast(now as datetime), cast(navigationStart as datetime), SECOND) latency
   FROM ${ref("search_latency")}
-  WHERE (DATE(_PARTITIONTIME) BETWEEN min_dt AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))-- > '2023-11-30'
+  WHERE (DATE(_PARTITIONTIME) BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
   AND RIGHT(suid,5) not like "%-%" 
   AND suid <> "1F8BFBFF000406F100155DEE32AD"
   and app_id not like "%�%"
@@ -52,7 +52,7 @@ WITH search_latency AS (
         SUM(internal_searches) internal_searches
   FROM `data-processing-272107.dwh.fact_revenue`
   WHERE is_deleted = FALSE
-  AND (date BETWEEN min_dt AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+  AND (date BETWEEN '2024-02-15' AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
   GROUP BY 1,2,3,4
   HAVING internal_searches > 0
 )
@@ -84,7 +84,7 @@ select *,
        sum(latency*searches) over(partition by app_id,date) w,
        sum(latency*searches) over(partition by app_id,date)/ sum(searches) over(partition by app_id,date) avg_latency
 from joined_latency
-where (date between min_dt and current_date())
+-- where (date between min_dt and current_date())
 order by 1 
 )
 
