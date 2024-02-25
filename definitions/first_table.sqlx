@@ -1,16 +1,14 @@
 config {
     type: "table",
-    
     bigquery: {
         partitionBy: "date",
         clusterBy: ["appID"]
-    },
-    assertions: {
-        uniqueKey: ["appID"],
-        nonNull: ["appID"]
     }
 }
-
+--  post_operations {
+--     uniqueKey: ["appID"],
+--     nonNull: ["appID"]
+--   }
 
 SELECT
   *EXCEPT(timestamp),

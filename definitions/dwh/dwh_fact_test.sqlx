@@ -1,0 +1,34 @@
+config {
+    type: "incremental",
+    uniqueKey: ["date","app_id", "country", "sp_type"],
+    schema: "stg",
+    bigquery: {
+      partitionBy: "date",
+      updatePartitionFilter:
+        "date > current_date() - 2"
+    }
+}
+
+pre_operations {
+    create or replace table `dataform.staging_test` as
+    select -- timestamp as ts,
+       date(timestamp) as date,
+       apl_id as app_id,
+       country,
+       srch_ngn as sp_type,
+       count(*) as searches
+    from ${ref("search_log")}
+    where date(_partitiontime) = date_sub(current_date, interval 2 day) 
+    group by 1,2,3,4
+}
+
+select -- timestamp as ts,
+       date(timestamp) as date,
+       apl_id as app_id,
+       country,
+       srch_ngn as sp_type,
+       count(*) as searches,
+       current_timestamp()
+from ${ref("search_log")}
+where date(_partitiontime) >= date_sub(current_date, interval 2 day) 
+group by 1,2,3,4

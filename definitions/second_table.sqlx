@@ -1,43 +1,20 @@
 config {
     type: "incremental",
-    uniqueKey: ["appID","appName", "sptype", "signature", "platform", "identity"],
+    uniqueKey: ["appID", "appName", "sptype", "signature", "platform", "identity"],
     schema: "stg",
-    dependencies: ["first_table"],
+    dependencies: ["uniqueKey_check"],
     bigquery: {
-      partitionBy: "date",
-      clusterBy: ["appID"]
-    }
+        partitionBy: "date",
+        updatePartitionFilter: "date > '2000-01-01'"
+    },
+
+    assertions: { nonNull: ["appID"] }
+
 }
 
--- pre_operations {
--- CREATE TABLE IF NOT EXISTS stg.second_table AS
---   SELECT *
---   FROM ${ref("first_table")};
 
--- -- MERGE ${self()} as t USING ${ref("first_table")} as s
--- -- ON t.app_id = s.app_id
--- -- WHEN MATCHED THEN UPDATE 
--- -- SET
--- -- t.appName = s.appName
--- --  , t.spType = s.spType
--- --  , t.signature = s.signature
--- --  , t.platform = s.platform
--- --  , t.identity = s.identity
--- --  , t.date = s.date
--- -- WHEN NOT MATCHED THEN
--- -- INSERT
--- -- VALUES(s.appID, s.appName, s.sptype, s.v, s.platform, s.identity, s.date)
--- }
-
-
-
--- CREATE OR REPLACE TABLE stg.second_table AS
-  SELECT *, current_timestamp() as insert_ts
-  FROM ${ref("first_table")}
-  ${ when(incremental(), `WHERE date > (SELECT IFNULL(MAX(date),'2000-01-01') FROM ${self()})`)}
-
-
-
-
-
-
+SELECT
+  *,
+  CURRENT_TIMESTAMP() AS insert_ts
+FROM
+  ${ref("first_table")} ${when(incremental(), `WHERE date > (SELECT IFNULL(MAX(date),'2000-01-01') FROM ${self()})`)}

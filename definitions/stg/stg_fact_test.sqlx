@@ -1,0 +1,13 @@
+config {
+    type: "view"
+}
+
+select timestamp as ts,
+       date(timestamp) as date,
+       apl_id as app_id,
+       country,
+       srch_ngn as sp_type,
+       count(*) as searches
+from ${ref("search_log")}
+where date(_partitiontime) = date_sub(current_date, interval 1 day) 
+group by 1,2,3,4,5
