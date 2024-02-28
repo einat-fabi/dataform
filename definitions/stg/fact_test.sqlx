@@ -1,36 +1,34 @@
 config {
-    type: "table",
-    
-    columns:{
-             date: "date of search",
-             country_code: "search location",
-             browser: "",
-             browser_version: "",
-             app_id: "",
-             channel_url: "channel sent in srch_url",
-             is_hp: "",
-             sp_type: "",
-             searches: "count of searches",
-             partner: "",
-             tbl_source: "pc/mac source table",
-             channel_id: "",
-             user_id: "",
-             install_date: "month instok",
-             feed: ""
-         },
-    name: "fact_test",
-      bigquery: {
+    type: "incremental",
+    uniqueKey: ["date",
+         "sent_channel",
+         "app_id",
+         "country_code",
+         "parent_channel",
+         "company",
+         "partner",
+         "provider",
+         "distributor",
+         "feed",
+         "sp_type",
+         "source_id",
+         "campaign_id",
+         "placement_id"],
+    dependencies: ["uniqueKey_check"],
+    bigquery: {
         partitionBy: "date",
-        clusterBy: ["date", "partner", "app_id"]    
-      }
+        updatePartitionFilter: "date = '2024-02-27'"
+    },
+
+    assertions: { nonNull: ["app_id"] }
 }
 
 pre_operations {
-  DECLARE event_timestamp DATE;
-  SET event_timestamp  =  (
+  DECLARE min_dt DATE;
+  SET min_dt  =  (
     ${when(incremental(),
     `SELECT max(date) FROM ${self()}`,
-    `SELECT DATE("2023-01-01")`)}
+    `SELECT DATE("2024-02-27")`)}
   )
 }
 
@@ -42,65 +40,495 @@ pre_operations {
 -- `SELECT TIMESTAMP("2000-01-01 00:00:00 UTC")`)}
 -- );
 
- SELECT 
-     date,
-     country_code,
-     browser,
-     browser_version,
-     app_id,
-     case when length(channel_url) > 16 then left(channel_url,16) else channel_url end as channel_url,
-     is_hp,
-     sp_type,
-     COUNT(*) as searches,
-     partner,
-     tbl_source,
-     channel_id,
-     user_id,
-     install_date,
-     feed
- FROM (
-  SELECT
-  DATE(DATE_TRUNC(timestamp, DAY)) as date,
-  country as country_code,
-  ${segment.BrowserName("browser")} as browser,
-  browser_version,
-  REPLACE(apl_id,' ','') as app_id,
-  case when 
-    (CASE WHEN INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(${segment.ReplaceStr("srch_ngn_url")}, INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END) like '%�%'
-  then left(CASE WHEN INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(${segment.ReplaceStr("srch_ngn_url")}, INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END,8)
-  else CASE WHEN INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1) = 0 THEN ''
-    ELSE SUBSTR(${segment.ReplaceStr("srch_ngn_url")}, INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3, (INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&q=', 1, 1)-(INSTR(${segment.ReplaceStr("srch_ngn_url")}, '&n=', 1, 1)+3))) END
-  end as channel_url,
-  is_hpok as is_hp,
-  srch_ngn as sp_type,
-  case when lower(company_name) like 'yahoo%' then 'Yahoo'
-       when lower(company_name) like 'firstofferz' or lower(srch_ngn) like '%foz%' then 'FirstOfferz'
-       when lower(company_name) like 'aka' then 'Aka'
-       when lower(company_name) like 'rise' then 'IronSource'
-       when lower(company_name) like 'evernetix' then 'Evernetix'
-       when lower(company_name) like 'candytech' then 'Perion'
-       else company_name end as partner,
-  'pc' as tbl_source,
-  IFNULL(CASE WHEN LENGTH(channel_id) > 8 THEN '' ELSE channel_id END,'') as channel_id,
-  suid as user_id,
-  CASE WHEN (LENGTH(CAST(month_instok AS STRING)) = 8) THEN SAFE.PARSE_DATE('%Y%m%d', CAST(month_instok AS STRING)) 
-       ELSE MIN(date(timestamp)) over(partition by suid) END  as install_date,
-  CASE WHEN lower(company_name) = 'skenzo' THEN SUBSTR(srch_ngn_url, INSTR(srch_ngn_url, 'https://', 1, 1)+8, (INSTR(srch_ngn_url, '.com', 1, 1)-(INSTR(srch_ngn_url, 'https://', 1, 1)+8)))
-       WHEN INSTR(${segment.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1) = 0 THEN ''
-       ELSE SUBSTR(${segment.FeedReplace("srch_ngn_url")}, INSTR(${segment.FeedReplace("srch_ngn_url")}, 'gd=', 1, 1)+3, 9) END as feed
-  FROM ${ref("search_log")} 
-  WHERE date(_partitiontime) = event_timestamp
-  
-  --  ${when(incremental(), `where date > (SELECT max(date) FROM ${self()})`)}
-  AND NOT(suid LIKE '178BFBFF00100F62      GEA534RV0118TA00259C7D5A9F' AND DATE(_PARTITIONTIME) = '2022-05-10' AND REPLACE(apl_id,' ','') LIKE '1495373619430762')
-  AND REGEXP_CONTAINS(suid, r'[^\w .-]') = FALSE
-  AND suid not like "%�%" and suid not like "%ɚ%" and suid not like "%ə%" 
-  AND RIGHT(suid,5) not like '%-%'
-  AND lower(country) <> 'il'
-  AND apl_id <> '1619447267835692'
+ WITH dim_apps_channels AS (
+  SELECT * ,rank() over(partition by channel,partner order by from_date desc)
+  FROM  `data-processing-272107.stg.dim_apps_channels`
+  QUALIFY case when (app_status = '3rd Party' OR (app_status = 'Tail' and channel <> '1234')) and count(app_id) over(partition by channel,partner) > 1 then rank() over(partition by channel,partner order by from_date desc) = 1 else rank() over(partition by app_id, channel, from_date, updated_date, partner order by app_id) = 1 end
+)
 
-
+, skenzo_feeds as (
+  SELECT * 
+  FROM (
+    select distinct 
+     feed as srch_feed
+    ,feed_key
+    ,type_tag
+    ,REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-','') type_tag_new
+    , IF(length(REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-','')) > 0 AND
+      regexp_contains(feed_key
+      ,REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-',''))
+      ,1,0) T
+    from (select *, if(feed like 'getpdf%', 'getpdftotal', feed) as feed_key from `data-processing-272107.stg.fact_all_searches_user_id` where lower(partner) = 'skenzo') s
+    CROSS JOIN (SELECT DISTINCT if(type_tag like 'GetPDF%', REPLACE(LEFT(type_tag,INSTR(concat(type_tag,"-"), '-', 1, 1)),'-',''),if(type_tag like 'Type1','GetPDFTotal',type_tag)) as type_tag FROM `data-processing-272107.mrr.skenzo`) f
+    where date >= min_dt)
+    tbl
+    WHERE T = 1
   )
-  GROUP BY 1,2,3,4,5,6,7,8,10,11,12,13,14,15
+
+, fact_all_searches_user_id_fix AS (
+  SELECT
+      date,
+      s.app_id,
+      country_code,
+      partner,
+      sp_type,
+      case when lower(partner) = 'skenzo' and (channel_url like '%sp%' or channel_url like '%hp%' or channel_url like "%{{Ch%" or channel_url like s.app_id or s.app_id like channel_url) then ''
+           else channel_url end as channel_url,
+      channel_id,
+      user_id,
+      install_date,
+      -- if(feed like 'getpdf%', 'getpdftotal', feed) as feed,
+      case when lower(partner) = 'skenzo' then type_tag else feed end as feed,
+      -- case when lower(partner) = 'skenzo' and feed like '%search' then substr(feed, 1, instr(feed,'search',1,1) - 1) else feed end as feed,
+      searches
+    FROM
+      `data-processing-272107.stg.fact_all_searches_user_id` s
+    LEFT JOIN skenzo_feeds f
+    ON s.feed = f.srch_feed
+    WHERE date >= min_dt 
+  )
+
+, InternalSearches_UserID AS (
+  SELECT
+    date,
+    sk,
+    user_id,
+    channel,
+    app_id,
+    country_code,
+    CASE WHEN lower(partner) in ('perion','ironsource') THEN concat(partner,' ',provider) 
+         ELSE partner END as partner,
+    provider,
+    case when instr(channel_url,"&") > 0 then left(channel_url,4) else channel_url end as channel_url,
+    channel_id,
+    feed,
+    sp_type,
+    internal_searches
+  FROM (
+    SELECT
+      a.date,
+      CASE WHEN a.channel_url = '' AND lower(a.partner) = 'perion' and lower(a.sp_type) like '%bing%' then b.channel
+           WHEN a.channel_url = '' AND b.channel not in ('null','') AND lower(a.partner) not in ('skenzo','yahoo','ironsource') THEN b.channel
+           WHEN a.channel_url = '' AND lower(a.partner) in ('skenzo','yahoo','ironsource') THEN a.app_id
+           WHEN a.channel_url = '' THEN a.app_id ELSE IFNULL(a.channel_url, b.channel) END as sk,
+      a.app_id,
+      a.country_code,
+      CASE WHEN lower(a.partner) = 'pkg' then 'Public-key'
+           WHEN lower(a.partner) = 'firstofferz' then 'FirstOfferz'
+           WHEN lower(a.partner) = 'ironsource' then 'IronSource'
+          --  WHEN lower(a.partner) like '%velkes%' then 'MVelkes'
+           ELSE IFNULL(INITCAP(a.partner),'') end as partner,
+      CASE WHEN lower(a.sp_type) like '%yahoo%' or lower(a.sp_type) like '%yhs%' THEN 'Yahoo'
+           WHEN lower(a.sp_type) like '%bing%' THEN 'Bing'
+           ELSE 'Bing' END as provider,
+      CASE WHEN length(a.channel_url) = 4 and lower(a.partner) not in ('skenzo','yahoo','ironsource') then a.channel_url 
+           WHEN a.channel_url = '' and  lower(a.partner) in ('skenzo','yahoo','ironsource') then a.channel_url
+          --  WHEN length(a.channel_url) = 8 then a.channel_url
+           ELSE b.channel end as channel,
+      -- IFNULL(b.channel,'') as channel,
+      a.channel_url,
+      channel_id,
+      a.user_id,
+      a.install_date,
+      a.sp_type,
+      IF(lower(a.partner) in ('perion','skenzo','bony innovation') or (lower(a.sp_type) like '%mvelkes%' and lower(a.sp_type) not like '%paw%'), feed,'') as feed,
+      -- IF(lower(a.partner) in ('perion','skenzo'), feed,'') as feed,
+      SUM(a.searches) AS internal_searches,
+    FROM
+      fact_all_searches_user_id_fix a
+    LEFT JOIN dim_apps_channels b
+    ON a.app_id = b.app_id
+    AND (a.date between b.from_date and IFNULL(b.updated_date,current_date()))
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+    )
+    QUALIFY rank() over(partition by date, app_id, country_code, channel_url, partner order by channel) = 1
+  )
+
+  , InternalSearches_Source_Feed AS (
+    SELECT 
+      a.date,
+      a.sk,
+      -- a.channel,
+      case when (length(channel_url) < 8 and length(channel_url) > 4) then a.channel_url else a.channel end as channel, ---- channel 10001 fix 21/2
+      a.app_id,
+      a.country_code,
+      a.partner,
+      a.provider,
+      a.channel_url,
+      -- a.user_id,
+      -- a.channel_id,
+      CASE WHEN a.app_id = '1695289669328399' AND b.source_id is null AND length(a.channel_url) = 8 THEN 'google'
+           WHEN a.app_id = '1695289669328399' AND b.source_id is null AND length(a.channel_url) <> 8 THEN 'dv'
+      ELSE IFNULL(b.source_id,'') END as source_id,
+      a.feed,
+      a.sp_type,
+      SUM(a.internal_searches) internal_searches
+    FROM InternalSearches_UserID a
+    LEFT JOIN (select distinct user_id, app_id, source_id from `data-processing-272107.dwh.dim_user_source`) b
+    ON a.user_id = b.user_id
+    and a.app_id = b.app_id
+    -- AND a.date >= b.install_date
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+  )
+
+  , partners_fix as (
+
+    SELECT
+      date,
+      channel, 
+      app_id,
+      country_code, 
+      provider, 
+      company,
+      -- product,
+      case when partner = 'Skenzo' and lower(product) like 'Type1' then 'GetPDFTotal' 
+           else product end as product,
+      partner,
+      total_searches, 
+      initial_searches, 
+      follow_on_searches, 
+      monetized_searches, 
+      amount,
+      ad_clicks
+     FROM `data-processing-272107.mrr.partners_data` a
+     WHERE date >= min_dt 
+     QUALIFY case when lower(partner) = 'skenzo' and COUNT(product) OVER (PARTITION BY date,app_id,country_code ORDER BY insert_date DESC) > 1 then product <> 'Type1' else 1=1 end
+  )
+
+  , partners as (
+
+     SELECT date,
+      case when a.channel = '' then ifnull(b.app_id,a.app_id)
+           else a.channel end as sk,
+      ifnull(a.channel,'') channel, 
+      case when a.app_id = '' or a.app_id is null then b.app_id else a.app_id end as app_id,
+      -- case when a.channel = '' then a.app_id 
+      -- else a.channel end as sk,
+      -- ifnull(a.channel,'') channel, 
+      -- ifnull(b.app_id,a.app_id) as app_id,
+      a.country_code, 
+      a.provider, 
+      a.company,
+      a.product as feed,
+      case when lower(a.partner) in ('perion','ironsource') then concat(a.partner,' ',provider) 
+         else a.partner end as partner,
+      sum(total_searches) total_searches, 
+      sum(initial_searches) initial_searches, 
+      sum(follow_on_searches) follow_on_searches, 
+      sum(monetized_searches) monetized_searches, 
+      sum(amount) amount,
+      sum(ad_clicks) clicks
+     FROM partners_fix a
+     LEFT JOIN dim_apps_channels b
+     ON a.channel <> '' 
+     AND a.channel = b.channel
+     AND b.channel <> '1234'
+       --  AND lower(a.partner) = lower(b.partner)
+     AND (a.date between b.from_date and IFNULL(b.updated_date,current_date()))
+     GROUP BY 1,2,3,4,5,6,7,8,9
+     QUALIFY case when length(channel) = 8 then rank() over(partition by date,channel order by monetized_searches desc) = 1 else 1=1 end 
+    )
+
+  
+, searches_partners_joined as (
+    SELECT
+      ifnull(a.date,b.date) as date,
+      -- ifnull(a.channel,b.channel) as channel,
+      case when length(ifnull(a.channel,b.channel)) = 8 then MIN(ifnull(a.channel,b.channel)) OVER (PARTITION BY ifnull(a.date,b.date), ifnull(a.sk,b.sk)) else ifnull(a.channel,b.channel) end as channel,
+      -- ifnull(a.app_id,b.app_id) as app_id,
+      case when length(ifnull(a.channel,b.channel)) = 8 then MAX(ifnull(a.app_id,b.app_id)) OVER (PARTITION BY ifnull(a.date,b.date), ifnull(a.sk,b.sk)) 
+       else ifnull(a.app_id,b.app_id) end as app_id,
+      ifnull(a.sk,b.sk) as sk,
+      ifnull(a.channel_url,b.channel) as channel_url,
+      -- ifnull(a.channel_id,'') as channel_id,
+      -- ifnull(a.source_id,'') source_id,
+      coalesce(a.source_id,first_value(a.source_id) over(partition by ifnull(a.partner,b.partner), ifnull(a.app_id,b.app_id)order by internal_searches desc)) source_id,
+      ifnull(a.country_code,b.country_code) as country_code,
+      -- ifnull(a.provider,b.provider) as provider,
+      coalesce(a.provider,first_value(a.provider) over(partition by ifnull(a.partner,b.partner), ifnull(a.app_id,b.app_id) order by internal_searches desc)) provider,
+      ifnull(a.partner,b.partner) partner,
+      ifnull(b.feed,a.feed) feed,
+      -- ifnull(a.sp_type,'') sp_type,
+      coalesce(a.sp_type,first_value(a.sp_type) over(partition by ifnull(a.partner,b.partner), ifnull(a.app_id,b.app_id) order by internal_searches desc)) sp_type,
+      -- ifnull(b.company,'') as company,
+      coalesce(b.company,first_value(b.company) over(partition by ifnull(a.partner,b.partner), ifnull(a.channel_url,b.channel) order by amount desc)) company,
+      ifnull((internal_searches),0) as internal_searches,
+      ifnull((clicks),0) as clicks,
+      ifnull((monetized_searches),0) as monetized_searches, 
+      ifnull((initial_searches),0) as initial_searches, 
+      ifnull((follow_on_searches),0) as follow_on_searches, 
+      ifnull((total_searches),0) as total_searches,  
+      ifnull((amount),0) as revenue, 
+    FROM InternalSearches_Source_Feed a
+    FULL JOIN partners b
+    ON a.sk = b.sk
+    AND a.date = b.date
+    AND a.country_code = b.country_code
+    AND lower(a.partner) = lower(b.partner)
+    -- AND (lower(a.feed) like lower(b.feed))
+    AND a.feed = b.feed
+    )
+
+
+ , revenue_split as (
+    SELECT 
+       date,
+       app_id,
+       channel_url,
+       channel,
+       country_code,
+       partner,
+       provider,
+       company,
+       source_id,
+       feed,
+       sp_type,
+       internal_searches,
+      --  SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner) as ins_test,
+       CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * clicks
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * clicks
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * clicks
+       ELSE clicks END END AS clicks,
+
+       CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * monetized_searches
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * monetized_searches
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * monetized_searches
+       ELSE monetized_searches END END AS monetized_searches,
+
+       CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * initial_searches
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * initial_searches
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(distinct sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * initial_searches
+       ELSE initial_searches END END AS initial_searches,
+      --  CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner) IS NOT NULL OR SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner) > 0) AND (LENGTH(sk) = 4 AND COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner) > 1)
+      --  THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner)) * initial_searches
+      --  ELSE initial_searches END AS initial_searches,
+
+       CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * follow_on_searches
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * follow_on_searches
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * follow_on_searches
+       ELSE follow_on_searches END END AS follow_on_searches,
+
+       CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * total_searches
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * total_searches
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * total_searches
+       ELSE total_searches END END AS total_searches,
+
+        CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) > 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+       THEN SAFE_DIVIDE(internal_searches, SUM(internal_searches) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * revenue
+       ELSE 
+          CASE WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(app_id) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(app_id) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * revenue
+          WHEN (SUM(internal_searches) OVER (PARTITION BY date, country_code, sk, company, partner, feed) = 0) AND (COUNT(sp_type) OVER(PARTITION BY date, country_code, sk, company, partner, feed) > 1)
+          THEN SAFE_DIVIDE(1, COUNT(sp_type) OVER (PARTITION BY date, country_code,sk, company, partner, feed)) * revenue
+       ELSE revenue END END AS revenue,
+    FROM searches_partners_joined 
+  )
+
+  , revenue_aggregeted as (
+    SELECT
+      date,
+      app_id,
+      channel_url,
+      channel,
+      country_code,
+      partner,
+      provider,
+      company,
+      source_id,
+      feed,
+      sp_type,
+      ifnull(MAX(internal_searches),0) as internal_searches,
+      ifnull(SUM(clicks),0) as clicks,
+      ifnull(SUM(monetized_searches),0) as monetized_searches, 
+      ifnull(SUM(initial_searches),0) as initial_searches, 
+      ifnull(SUM(follow_on_searches),0) as follow_on_searches, 
+      ifnull(SUM(total_searches),0) as total_searches,  
+      ifnull(SUM(revenue),0) as revenue, 
+    FROM revenue_split
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+    )
+
+
+   , Perion_RevDiff AS (
+    SELECT
+    a.date,
+    '-1' as app_id,
+    '' as channel_url,
+       '-1000' as channel,
+    'US' as country_code,
+    'Perion' as partner,
+    CASE WHEN a.provider = 'Bing' AND b.provider = 'Bing' THEN 'Bing'
+         WHEN a.provider = 'Yahoo' AND b.provider = 'Yahoo' THEN 'Yahoo'
+    ELSE 'Bing' END as provider,
+    a.company,
+    0 as internal_searches,
+    0 as clicks, 
+    0 as monetized_searches,
+    0 as initial_searches,
+    0 as follow_on_searches,
+    0 as total_searches,
+    a.amount - b.revenue as revenue,
+    
+    FROM
+    (
+      SELECT date, channel, provider, company, sum(amount) as amount 
+      FROM (SELECT * FROM `data-processing-272107.mrr.partners_data` WHERE partner = 'Perion' and channel is not null and monetized_searches > 0 and date = min_dt)
+      GROUP BY 1,2,3,4
+    ) a
+    LEFT JOIN 
+    (  
+      SELECT date, channel, provider, company, sum(revenue) as revenue 
+      FROM (select * from revenue_aggregeted where partner like 'Perion%')
+      GROUP BY 1,2,3,4
+    ) b 
+    ON a.date = b.date AND a.provider = b.provider AND a.company = b.company AND a.channel = b.channel
+    WHERE revenue IS NOT NULL
+  )
+
+  ,final_revenue_aggregeted as (
+    select * from revenue_aggregeted
+    -- UNION ALL
+    -- select * from Perion_RevDiff  
+  )
+
+----------------UNION ALL TABLES----------------
+
+ , RevenueFinal_Costs AS (
+ SELECT 
+  a.date,
+  a.channel_url,
+  COALESCE(a.app_id,first_value(a.app_id) over(partition by channel_url,a.partner order by internal_searches desc)) as app_id,
+  -- CASE WHEN a.app_id is null or a.app_id = '' then '-1' else a.app_id end as app_id,
+  -- IFNULL(a.app_id,'-1') app_id,
+  IFNULL(case when length(country_code) > 4 then '' else country_code end, '') as country_code,
+  -- IFNULL(a.product,'') product,
+  CASE WHEN a.channel is null OR a.channel = '' OR a.app_id = '-1' THEN '-1000' 
+       ELSE a.channel END as channel,
+  -- IF(IFNULL(IF((length(a.channel) > 5 AND length(a.channel) < 8) OR a.app_id = '-1','-1000', a.channel),'-1000') = '', '-1000', a.channel) as channel,
+  CASE WHEN a.company = 'FireArc' AND a.provider = 'Yahoo' THEN 'FireArc - Yahoo'
+       WHEN a.company = 'FireArc' AND a.provider = 'Bing' THEN 'FireArc - Bing'
+       ELSE IFNULL(a.company,'') END as company,
+  -- CASE WHEN a.partner in ('Perion','IronSource') then concat(a.partner,' ',a.provider) ELSE a.partner END as partner, 
+  a.partner,
+  CASE WHEN a.partner like 'Perion' THEN a.provider ELSE if(length(b.provider) > 5,'Bing',a.provider) END as provider,
+  IFNULL(b.distributor,'') as distributor,
+  IFNULL(a.source_id,'') as source_id,
+  IFNULL(a.feed,'') as feed,
+  IFNULL(a.sp_type,'') sp_type, 
+  IFNULL(a.total_searches,0) total_searches,
+  IFNULL(a.initial_searches,0) initial_searches,
+  IFNULL(a.follow_on_searches,0) follow_on_searches,
+  IFNULL(a.internal_searches,0) internal_searches,
+  IFNULL(a.clicks,0) clicks,
+  IFNULL(a.monetized_searches,0) monetized_searches,
+  IFNULL(a.revenue,0) revenue,
+  IFNULL(CASE
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-08-26' AND a.country_code = 'US' AND lower(b.distributor) = 'marketator' THEN monetized_searches*58/1000*0.7
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-08-26' AND a.country_code = 'GB' AND lower(b.distributor) = 'marketator' THEN monetized_searches*32/1000*0.7
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-11-10' AND a.country_code = 'US' AND lower(b.distributor) = 'marketator' THEN monetized_searches*58/1000*0.8
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-11-10' AND a.country_code = 'GB' AND lower(b.distributor) = 'marketator' THEN monetized_searches*32/1000*0.8
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-12-04' AND lower(b.distributor) = 'marketator' THEN revenue*0.67
+      WHEN lower(a.partner) = 'perion' AND a.date < '2021-12-11' AND lower(b.distributor) = 'marketator' THEN revenue*0.73
+      WHEN lower(a.partner) = 'perion' AND a.date < '2022-01-01' AND lower(b.distributor) = 'marketator' THEN revenue*0.70
+      WHEN lower(a.partner) in ('perion','firstofferz') AND a.date < '2022-03-13' AND lower(b.distributor) = 'marketator' THEN revenue*0.67
+      WHEN lower(a.partner) in ('perion','firstofferz') AND a.date < '2022-06-15' AND lower(b.distributor) = 'marketator' THEN revenue*0.65
+      WHEN lower(a.partner) = 'perion' AND a.date < '2022-06-15' AND lower(b.distributor) = 'firstofferz' THEN revenue*0.8
+      WHEN lower(a.partner) = 'perion' AND a.date < '2022-10-18' AND lower(b.distributor) = 'firstofferz' THEN revenue*0.7
+      WHEN lower(a.partner) in ('perion','firstofferz') AND a.date < '2022-03-13' AND lower(b.distributor) = 'exmarketplace' THEN revenue*0.82
+      WHEN lower(a.partner) in ('perion','firstofferz') AND a.date < '2022-06-09' AND lower(b.distributor) = 'exmarketplace' THEN revenue*0.8
+      WHEN lower(a.partner) in ('perion','firstofferz') AND a.date < '2022-06-15' AND lower(b.distributor) = 'exmarketplace' THEN revenue*0.76
+      WHEN lower(b.distributor) = 'marketator' AND a.date < '2023-04-17' THEN revenue*0.68 -- itzik 
+      WHEN lower(b.distributor) = 'marketator' AND b.provider = 'Bing' THEN  revenue*0.68 -- itzik 
+      WHEN lower(b.distributor) = 'marketator' AND b.provider = 'Yahoo' AND date < "2023-04-30" THEN  revenue*0.63 -- itzik
+      WHEN lower(b.distributor) = 'marketator' AND b.provider = 'Yahoo' AND date < "2023-06-07" THEN revenue*0.58  -- itzik
+      WHEN lower(b.distributor) = 'marketator' AND b.provider = 'Yahoo' THEN revenue*0.50  -- itzik                
+      WHEN lower(b.distributor) = 'firstofferz' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'exmarketplace' THEN revenue*0.75
+      WHEN lower(b.distributor) = 'aka' THEN revenue*0.70
+      WHEN lower(b.distributor) = 'weave-innovative' THEN revenue*0.78
+      WHEN lower(b.distributor) = 'evernetix' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'adexpertsmedia' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'mobifun' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'advertiv' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'mobitech' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'public-key' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'algopeak' and a.date >= '2023-07-16' and a.channel = '6127' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'algopeak' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'a2o' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'couponroller' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'coinis' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'meganet' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'kodio' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'xaria' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'aderbid' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'aditmedia' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'playdigo' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'richads' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'searchads' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'gamalpha' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'feedlord' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'fusionbutton' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'aditmedia' THEN revenue*0.7
+      WHEN lower(b.distributor) = 'apptastic' THEN revenue*0.8
+      WHEN lower(b.distributor) = 'horizon' THEN revenue*0.7
+      ELSE 0
+    END,0) AS cost,
+FROM
+  final_revenue_aggregeted a 
+  LEFT JOIN `data-processing-272107.dwh.dim_apps` b 
+  ON a.app_id = b.app_id
+WHERE NOT(length(a.app_id) > 16 and revenue = 0) 
+AND a.date >= min_dt
+)
+
+----fact_revenue_grouped
+  SELECT a.date,
+         a.channel_url as sent_channel,
+         a.app_id,
+         a.country_code,
+         a.channel as parent_channel,
+         CASE WHEN company = 'FireArc' and partner = 'Perion Bing' THEN 'FireArc - Bing'
+              WHEN company = 'FireArc' and partner = 'Perion Yahoo' THEN 'FireArc - Yahoo'
+              ELSE 
+         IF(company = '',partner,company) END company,
+         a.partner,
+         a.provider,
+         a.distributor,
+         a.feed,
+         a.sp_type,
+         a.source_id,
+         b.campaign_id,
+         b.placement_id,
+         SUM(a.total_searches) total_searches,
+         SUM(a.initial_searches) initial_searches,
+         SUM(a.follow_on_searches) follow_on_searches,
+         SUM(IFNULL(a.internal_searches,0)) internal_searches,
+         SUM(a.clicks) clicks,
+         SUM(a.monetized_searches) monetized_searches,
+         SUM(a.revenue) revenue,
+         SUM(IFNULL(a.cost,0)) cost,
+         CURRENT_TIMESTAMP() as updated_record
+  FROM RevenueFinal_Costs a
+  LEFT JOIN `data-processing-272107.dwh.dim_channel_id` b
+  ON a.channel_url = b.channel_id
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14

@@ -2,9 +2,16 @@ config {
     type: "assertion"
 }
 
+-- SELECT
+--   *
+-- FROM
+--   ${ref("first_table")}
+-- WHERE
+--   appID IS null
+
 SELECT
-  *
+  max(date)
 FROM
-  ${ref("first_table")}
-WHERE
-  appID IS null
+  ${ref("fact_all_searches_user_id")}
+WHERE date >= '2024-02-25'
+HAVING max(date) > '2024-01-01'

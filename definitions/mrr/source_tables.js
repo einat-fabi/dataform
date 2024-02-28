@@ -4,6 +4,12 @@ declare({
     name: "fact_all_searches_user_id"
 });
 
+declare({
+    database: "data-processing-272107",
+    schema: "stg",
+    name: "dim_apps_channels"
+});
+
 
 declare({
     database: "search-somoto-hrd",
@@ -32,7 +38,7 @@ declare({
 
 declare({
     database: "data-processing-272107",
-    schema: "mrr_dev",
+    schema: "mrr",
     name: "partners_data"
 });
 
@@ -44,10 +50,19 @@ declare({
 
 
 declare({
+    database: "data-processing-272107",
+    schema: "dwh",
+    name: "dim_channel_id"
+});
+
+
+declare({
     database: "pc-windows-168009",
     schema: "report",
     name: "search_latency"
 });
+
+
 // declare({
 //     database: "pc-windows-168009",
 //     schema: "report",
