@@ -1,0 +1,327 @@
+config {
+  type: "view"
+
+}
+
+WITH Estimation AS (
+  SELECT 
+         a.app_id,
+         country_code,
+         case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              else partner end as partner,
+         case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              when partner like '%Velkes%' and lower(sp_type) like '%paw%' then 'MVelkes_System1'
+              when partner like '%Velkes%' and lower(sp_type) not like '%paw%' then 'MVelkes_Perion'
+              else partner end as company,
+         case when partner = 'Yahoo' then 'Yahoo' 
+              when partner = 'IronSource Bing' then 'Bing'
+              when partner = 'IronSource Yahoo' then 'Yahoo'
+              when partner = 'Skenzo' then 'Yahoo'
+              when provider = '' then 'Bing'
+              else provider end as provider,
+        --  LOWER(b.SpType) as sp_type,
+         EXTRACT(DAYOFWEEK from date) dow,
+         IFNULL(SAFE_DIVIDE(SUM(revenue),SUM(internal_searches)),0) ex,
+         IFNULL(SAFE_DIVIDE(SUM(monetized_searches),SUM(internal_searches)),0) ox,
+  FROM ${ref("fact_test")} a
+  -- LEFT JOIN `data-processing-272107.mrr.app_installmac` b
+  -- on a.app_id = b.appID
+  WHERE date between DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -3 DAY)
+  AND is_deleted = FALSE
+  AND partner <> 'Perion Bing'
+  GROUP BY app_id, country_code, dow , partner, provider, company --, b.SpType
+
+  UNION ALL
+
+  SELECT 
+         a.app_id,
+         country_code,
+         case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              else partner end as partner,
+         case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              when partner like '%Velkes%' and lower(sp_type) like '%paw%' then 'MVelkes_System1'
+              when partner like '%Velkes%' and lower(sp_type) not like '%paw%' then 'MVelkes_Perion'
+              else partner end as company,
+         case when partner = 'Yahoo' then 'Yahoo' 
+              when partner = 'IronSource Bing' then 'Bing'
+              when partner = 'IronSource Yahoo' then 'Yahoo'
+              when partner = 'Skenzo' then 'Yahoo'
+              when provider = '' then 'Bing'
+              else provider end as provider,
+        --  LOWER(b.SpType) as sp_type,
+         EXTRACT(DAYOFWEEK from date) dow,
+         IFNULL(SAFE_DIVIDE(SUM(revenue),SUM(internal_searches)),0) ex,
+         IFNULL(SAFE_DIVIDE(SUM(monetized_searches),SUM(internal_searches)),0) ox,
+  FROM ${ref("fact_test")} a
+  -- LEFT JOIN `data-processing-272107.mrr.app_installmac` b
+  -- on a.app_id = b.appID
+  WHERE date between DATE_ADD(CURRENT_DATE(), INTERVAL -31 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY)
+  AND is_deleted = FALSE
+  AND partner = 'Perion Bing'
+  GROUP BY app_id, country_code, dow , partner, provider, company --, b.SpType
+)
+
+
+, Cost_Estimation AS (
+   SELECT distributor,
+          case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              else partner end as partner,
+         case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              when partner like '%Velkes%' and lower(sp_type) like '%paw%' then 'MVelkes_System1'
+              when partner like '%Velkes%' and lower(sp_type) not like '%paw%' then 'MVelkes_Perion'
+              else partner end as company,
+          app_id,
+          country_code,
+          case when partner = 'Yahoo' then 'Yahoo' 
+              when partner = 'IronSource Bing' then 'Bing'
+              when partner = 'IronSource Yahoo' then 'Yahoo'
+              when partner = 'Skenzo' then 'Yahoo'
+              when provider = '' then 'Bing'
+              else provider end as provider,
+          -- LOWER(spType) as sp_type,chan
+          EXTRACT(DAYOFWEEK from q.date) dow,
+          IFNULL(SAFE_DIVIDE(SUM(q.cost),SUM(q.revenue)),0) co
+    FROM `data-processing-272107.dwh.fact_revenue` q
+    -- LEFT JOIN `data-processing-272107.mrr.app_installmac` b
+    -- ON q.app_id = b.appID
+    WHERE date between DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -3 DAY) AND lower(distributor) <> 'firearc'
+    AND is_deleted = FALSE
+    GROUP BY distributor, app_id, country_code, dow , partner, provider, company --, spType
+)
+
+
+, skenzo_feeds as (
+  SELECT * 
+  FROM (
+    select distinct 
+     feed as srch_feed
+    ,feed_key
+    ,type_tag
+    ,REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-','') type_tag_new
+    , IF(length(REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-','')) > 0 AND
+      regexp_contains(feed_key
+      ,REPLACE(LEFT(LOWER(concat(f.type_tag,'-')),INSTR(concat(f.type_tag,'-'), '-', 1, 1)),'-',''))
+      ,1,0) T
+    from (select *, if(feed like 'getpdf%', 'getpdftotal', feed) as feed_key from ${ref("fact_all_searches_user_id")} where lower(partner) = 'skenzo') s
+    CROSS JOIN (SELECT DISTINCT if(type_tag like 'GetPDF%', REPLACE(LEFT(type_tag,INSTR(concat(type_tag,"-"), '-', 1, 1)),'-',''),if(type_tag like 'Type1','GetPDFTotal',type_tag)) as type_tag FROM `data-processing-272107.mrr.skenzo`) f
+    where date >= DATE_ADD(CURRENT_DATE(), INTERVAL -15 DAY))
+    tbl
+    WHERE T = 1
+  ) 
+
+, InternalSearches1 AS (
+  SELECT
+         date, 
+         country_code, 
+         a.app_id,
+        --  srch_ngn as sp_type,
+        IF(lower(a.partner) = 'skenzo', f.type_tag, a.feed) as feed,
+  channel_url as channel,
+        a.sp_type,
+        -- case when lower(a.partner) in ('skenzo','yahoo','ironsource') then '-1000' else b.channel end as channel,
+        --  b.product,
+         case when lower(a.partner) = 'algopeak' then 'Algopeak'
+              else a.partner end as partner,
+          case when lower(a.partner) = 'algopeak' then 'Algopeak'
+              when a.partner like '%Velkes%' and lower(a.sp_type) like '%paw%' then 'MVelkes_System1'
+              when a.partner like '%Velkes%' and lower(a.sp_type) not like '%paw%' then 'MVelkes_Perion' 
+              else a.partner end as company,
+         b.distributor as distributor,
+         EXTRACT(DAYOFWEEK from date) dow,
+         case when lower(a.sp_type) like '%yahoo%' or lower(a.sp_type) like '%yhs%' or a.partner = 'Yahoo' then 'Yahoo' ELSE 'Bing' end as provider,
+         SUM(searches) as internal_searches
+  FROM `data-processing-272107.stg.fact_all_searches_user_id` a
+  -- LEFT JOIN `data-processing-272107.dwh.dim_apps` b
+  LEFT JOIN (select * from `data-processing-272107.stg.dim_apps_channels` where updated_date is null and distributor NOT LIKE 'null') b
+  ON b.app_id = a.app_id
+  LEFT JOIN skenzo_feeds f
+  ON f.srch_feed = a.feed
+  WHERE date between DATE_ADD(CURRENT_DATE(), INTERVAL -31 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+  )
+
+
+, InternalSearches AS (
+  SELECT * FROM InternalSearches1
+  -- UNION ALL
+  -- SELECT * FROM InternalSearches2
+)
+  
+, Calc_Estimation1 AS (
+  SELECT a.*,
+         b.ex,
+         (a.internal_searches * (case when b.ex > 1 then b.ex/100 else b.ex end)) as revenue,
+         (a.internal_searches * (case when b.ox > 10 then b.ox/10 else b.ox end)) as monetized_searches
+  FROM InternalSearches a
+  LEFT JOIN Estimation b 
+  on b.app_id = a.app_id and b.country_code = a.country_code and b.dow = a.dow and lower(a.partner) = lower(b.partner) and lower(a.provider) = lower(b.provider)
+  -- WHERE partner is not null
+)
+
+, Calc_Estimation2 AS (
+  SELECT a.*,
+         b.co,
+         a.revenue * b.co as cost
+  FROM Calc_Estimation1 a left join Cost_Estimation b 
+  ON b.distributor = a.distributor and b.app_id = a.app_id and b.country_code = a.country_code and b.dow = a.dow and lower(a.partner) = lower(b.partner) and lower(a.provider) = lower(b.provider)
+)
+
+, Calc_Estimation_grouped AS (
+  SELECT 
+         date,
+         app_id,
+         channel,
+         country_code,
+         partner,
+         company,
+         provider,
+         feed,
+         sp_type,
+         distributor,
+         SUM(internal_searches) internal_searches,
+         SUM(monetized_searches) monetized_searches,
+         SUM(revenue) revenue,
+         SUM(cost) cost
+  FROM Calc_Estimation2
+  GROUP BY 1,2,3,4,5,6,7,8,9,10
+)
+
+
+, final AS (
+
+  SELECT --a.hour,
+         a.date,
+        --  '' channel_id,
+         ifnull(a.app_id,'-1') app_id,
+         ifnull(a.country_code,'') country_code,
+        --  ifnull(b.product,'') product,
+        feed,
+        sp_type,
+        channel,
+        a.company,
+        --  ifnull(a.partner,'') as company,
+         ifnull(case when lower(a.partner) in ('ironsource','perion') then concat(if(initcap(a.partner) = 'Ironsource', 'IronSource', initcap(a.partner)),' ',a.provider)
+                     when lower(a.partner)  = 'ironsource' then 'IronSource'
+                     when lower(a.partner)  = 'firstofferz' then 'FirstOfferz'
+                     else initcap(a.partner) end,'') as partner,
+        --  ifnull(a.partner,'') partner, 
+         ifnull(a.distributor,'') distributor,
+         a.provider,
+         '' as source_id,
+         '' as campaign_id,
+         '' as placement_id,
+         0 total_searches,
+         0 as initial_searches,
+         0 as follow_on_searches,
+        --  CASE WHEN sum(monetized_searches) over (partition by a.date, a.country_code, a.app_id) is null THEN a.searches/count(a.partner) over (partition by a.date, a.country_code, a.app_id)
+        -- ELSE a.searches END as internal_searches, 
+         a.internal_searches as internal_searches,
+         0 clicks,
+         a.monetized_searches,
+         a.revenue,
+         a.cost,
+         1 as is_estimation
+  FROM Calc_Estimation_grouped a 
+  -- LEFT JOIN `stg.dim_apps_channels` b
+  -- ON b.app_id = a.app_id AND (a.date >= b.from_date and a.date <= IFNULL(b.updated_date,DATE(CURRENT_DATE()))) 
+  LEFT JOIN (select case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              else partner end as partner, 
+              case when partner like 'Perion%' then 'Perion'
+              when partner like 'IronSource%' then 'IronSource'
+              when partner like '%Velkes%' and lower(sp_type) like '%paw%' then 'MVelkes_System1'
+              when partner like '%Velkes%' and lower(sp_type) not like '%paw%' then 'MVelkes_Perion' 
+              else partner end as company, 
+              case when partner = 'Skenzo' then 'Yahoo' when provider = '' then 'Bing' else provider end as provider, max(date) mx_dt 
+              from `data-processing-272107.dwh.fact_revenue` WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) and revenue > 0 and is_deleted = false group by partner,provider,company) c 
+  ON lower(c.partner) = lower(a.partner)
+  AND lower(c.provider) = lower(a.provider)
+  AND lower(c.company) = lower(a.company)
+  WHERE a.date > c.mx_dt 
+  AND a.date <= DATE_ADD(c.mx_dt, INTERVAL 3 DAY)
+  -- AND c.mx_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND c.mx_dt >= DATE_SUB(DATE_ADD(CURRENT_DATE(),INTERVAL -1 DAY), INTERVAL 3 DAY)
+
+  UNION ALL
+
+  SELECT 
+    --0 as hour,
+    date,
+  --  IF(length(channel_id) = 8, channel_id,'') channel_id,
+    app_id,
+    country_code,
+    feed,
+    sp_type,
+    parent_channel as channel, --parent_channel
+    case when partner like '%Velkes%' and lower(sp_type) like '%paw%' then 'MVelkes_System1'
+         when partner like '%Velkes%' and lower(sp_type) not like '%paw%' then 'MVelkes_Perion'
+         else company end as company,
+    case when date < '2023-03-01' and partner = 'IronSource Yahoo' and app_id IN ('1628680341742912', '1654513741549412') then 'IronSource Yahoo'  
+         when date < '2023-03-01' and partner = 'IronSource Yahoo' and app_id NOT IN ('1628680341742912', '1654513741549412') then 'IronSource Bing'
+        --  when app_id in ('1677589698009464','1677589707100844') then 'Evernetix'
+        --  when app_id = '1683111824434698' then 'FirstOfferz'
+         else partner end as partner,
+    distributor,
+    provider,
+    source_id,
+    campaign_id,
+    placement_id,
+    SUM(total_searches) total_searches,
+    SUM(initial_searches) initial_searches,
+    SUM(follow_on_searches) follow_on_searches,
+    SUM(internal_searches)internal_searches,
+    SUM(clicks) clicks,
+    SUM(monetized_searches) monetized_searches,
+    SUM(revenue) revenue,
+    SUM(cost) cost,
+    0 as is_estimation
+  FROM ${ref("fact_test")}
+  WHERE date >= '2020-12-01' 
+        AND is_deleted = FALSE 
+        AND NOT(revenue = 0 and monetized_searches = 0 and cost = 0 and internal_searches = 0) AND country_code <> 'A1'  
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+)
+
+
+, cte as (
+
+  SELECT * 
+  FROM final
+  QUALIFY final.is_estimation = MAX(is_estimation) OVER (PARTITION BY date, app_id, country_code, partner)
+)
+
+
+SELECT 
+    date,
+    ifnull(case when app_id in ('1701606597344238') then '1701859720109793' 
+         when app_id in ('1701252956984828') then '1702979041783890'
+         else app_id end,'-1') as app_id,
+    country_code,
+    feed,
+    sp_type,
+    channel,
+    company,
+    partner,
+    distributor,
+    provider,
+    source_id,
+    campaign_id,
+    placement_id,
+    total_searches,
+    initial_searches,
+    follow_on_searches,
+    internal_searches,
+    clicks,
+    monetized_searches,
+    revenue,
+    cost,
+    is_estimation 
+from cte
+where partner <> ''
+
