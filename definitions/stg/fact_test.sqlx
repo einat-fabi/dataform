@@ -17,7 +17,7 @@ config {
     dependencies: ["uniqueKey_check"],
     bigquery: {
         partitionBy: "date",
-        updatePartitionFilter: "date = '2024-02-27'"
+        updatePartitionFilter: "date > current_date()-1 "
     },
 
     assertions: { nonNull: ["app_id"] }
@@ -28,9 +28,17 @@ pre_operations {
   SET min_dt  =  (
     ${when(incremental(),
     `SELECT max(date) FROM ${self()}`,
-    `SELECT DATE("2024-02-27")`)}
+    `SELECT DATE("2024-02-26")`)}
   )
 }
+
+-- post_operations {
+--   MERGE ${self()}
+--   USING
+--   WHEN NOT MATCHED BY SOURCE 
+--   THEN UPDATE
+--   SET t.is_deleted = true, 
+-- }
 
 -- DECLARE event_timestamp_checkpoint DEFAULT TIMESTAMP("2000-01-01 00:00:00 UTC");
 
@@ -39,6 +47,7 @@ pre_operations {
 -- `SELECT max(ingestionTime) FROM ${self()}`,
 -- `SELECT TIMESTAMP("2000-01-01 00:00:00 UTC")`)}
 -- );
+
 
  WITH dim_apps_channels AS (
   SELECT * ,rank() over(partition by channel,partner order by from_date desc)
@@ -60,7 +69,7 @@ pre_operations {
       ,1,0) T
     from (select *, if(feed like 'getpdf%', 'getpdftotal', feed) as feed_key from `data-processing-272107.stg.fact_all_searches_user_id` where lower(partner) = 'skenzo') s
     CROSS JOIN (SELECT DISTINCT if(type_tag like 'GetPDF%', REPLACE(LEFT(type_tag,INSTR(concat(type_tag,"-"), '-', 1, 1)),'-',''),if(type_tag like 'Type1','GetPDFTotal',type_tag)) as type_tag FROM `data-processing-272107.mrr.skenzo`) f
-    where date >= min_dt)
+    where date > min_dt)
     tbl
     WHERE T = 1
   )
@@ -85,7 +94,7 @@ pre_operations {
       `data-processing-272107.stg.fact_all_searches_user_id` s
     LEFT JOIN skenzo_feeds f
     ON s.feed = f.srch_feed
-    WHERE date >= min_dt 
+    WHERE date > min_dt 
   )
 
 , InternalSearches_UserID AS (
@@ -166,7 +175,7 @@ pre_operations {
     FROM InternalSearches_UserID a
     LEFT JOIN (select distinct user_id, app_id, source_id from `data-processing-272107.dwh.dim_user_source`) b
     ON a.user_id = b.user_id
-    and a.app_id = b.app_id
+    AND a.app_id = b.app_id
     -- AND a.date >= b.install_date
     GROUP BY 1,2,3,4,5,6,7,8,9,10,11
   )
@@ -191,7 +200,7 @@ pre_operations {
       amount,
       ad_clicks
      FROM `data-processing-272107.mrr.partners_data` a
-     WHERE date >= min_dt 
+     WHERE date > min_dt 
      QUALIFY case when lower(partner) = 'skenzo' and COUNT(product) OVER (PARTITION BY date,app_id,country_code ORDER BY insert_date DESC) > 1 then product <> 'Type1' else 1=1 end
   )
 
@@ -527,8 +536,10 @@ AND a.date >= min_dt
          SUM(a.monetized_searches) monetized_searches,
          SUM(a.revenue) revenue,
          SUM(IFNULL(a.cost,0)) cost,
-         CURRENT_TIMESTAMP() as updated_record
+         CURRENT_TIMESTAMP() as updated_record,
+         FALSE as is_deleted
   FROM RevenueFinal_Costs a
   LEFT JOIN `data-processing-272107.dwh.dim_channel_id` b
   ON a.channel_url = b.channel_id
   GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+
